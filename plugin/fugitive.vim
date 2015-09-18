@@ -1328,13 +1328,13 @@ function! s:Log(bang) abort
     call s:LogLoadCommitData(a:bang, base_file_name, template_cmd, path)
     let b:base_file_name = base_file_name
     let b:git_dir = git_dir
-    let b:fugitive_logged_bufnr = bufnr
+    let b:fugitive_blob_bufnr = bufnr
     if g:fugitive_log_resize
         exe 'vertical resize '.g:fugitive_log_width
     endif
     " invoke Close instead of bdelete so we can do the necessary cleanup
     nnoremap <buffer> <silent> q    :<C-U>call <SID>LogClose()<CR>
-    " nnoremap <buffer> <silent> dt   :<C-U><CR>
+    nnoremap <buffer> <silent> dt   :<C-U>:exe tabnew | edit <SID>LogFugitiveSpec() | Gdiff <SID>LogFugitiveSpec('^')<CR>
     nnoremap <buffer> <silent> t    :let line=line('.')<cr> :<C-U>exe <SID>LogDiffToggle()<CR> :exe line<cr>
     command! -buffer -bang Glog :execute s:Log(<bang>0)
     autocmd BufLeave <buffer>       hi! link CursorLine NONE
@@ -1429,7 +1429,18 @@ function! s:LogCommitPath(...) abort
   else
     let modifier = ''
   endif
-  return b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_logged_bufnr).path()
+    let spec = s:repo().translate(b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path())
+    echo spec
+  return b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path()
+endfunction
+
+function! s:LogFugitiveSpec(...) abort
+  if exists('a:1')
+    let modifier = a:1
+  else
+    let modifier = ''
+  endif
+    return s:repo().translate(b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path())
 endfunction
 
 " Closes the file log and returns the selected `commit:path`
@@ -1443,17 +1454,17 @@ function! s:LogClose() abort
   exe 'keepjumps '.filelog_winnr.'wincmd w'
 
   let rev = s:LogCommitPath()
-  let fugitive_logged_bufnr = b:fugitive_logged_bufnr
+  let fugitive_blob_bufnr = b:fugitive_blob_bufnr
   if exists('b:fugitive_simplediff_bufnr') && bufwinnr(b:fugitive_simplediff_bufnr) >= 0
     silent exe 'keepjumps bd!' . b:fugitive_simplediff_bufnr
   endif
   if t:fugitive_log_switch_back
-    exe b:fugitive_logged_bufnr.'buffer'
+    exe b:fugitive_blob_bufnr.'buffer'
   endif
   if bufexists(t:fugitive_log_bufnr)
     silent exe 'keepjumps bd!' . t:fugitive_log_bufnr
   endif
-  let logged_winnr = bufwinnr(fugitive_logged_bufnr)
+  let logged_winnr = bufwinnr(fugitive_blob_bufnr)
   if logged_winnr >= 0
     exe 'keepjumps '.logged_winnr.'wincmd w'
   endif
@@ -1543,7 +1554,10 @@ function! s:SimpleDiff(git_cmd,a,b) abort
   let b:files = { 'a': a:a, 'b': a:b }
   normal! zR
   keepjumps wincmd p
+endfunction
 
+function! s:LogDiffCommit() abort
+    exe ':tabnew | edit <SID>LogFugitiveSpec() | Gdiff <SID>LogFugitiveSpec("^")'
 endfunction
 
 " Section: Gedit, Gpedit, Gsplit, Gvsplit, Gtabedit, Gread
