@@ -1313,251 +1313,252 @@ call s:command("-bang Glog :execute s:Log(<bang>0)")
 autocmd Syntax fugitive_log call s:LogSyntax()
 
 function! s:Log(bang) abort
-  " if we are open, close.
-  if s:LogIsActiveInTab()
-    call s:LogClose()
-    return
-  endif
-
-  let path = s:buffer().path()
-  try
-    let git_dir = s:buffer().repo().dir()
-    let template_cmd = ['--no-pager', 'log', '--follow']
-    let bufnr = bufnr('')
-    let base_file_name = tempname()
-    call s:LogLoadCommitData(a:bang, base_file_name, template_cmd, path)
-    let b:base_file_name = base_file_name
-    let b:git_dir = git_dir
-    let b:fugitive_blob_bufnr = bufnr
-    if g:fugitive_log_resize
-        exe 'vertical resize '.g:fugitive_log_width
+    " if we are open, close.
+    if s:LogIsActiveInTab()
+        call s:LogClose()
+        return
     endif
-    " invoke Close instead of bdelete so we can do the necessary cleanup
-    nnoremap <buffer> <silent> q    :<C-U>call <SID>LogClose()<CR>
-    nnoremap <buffer> <silent> dt   :<C-U>:exe tabnew | edit <SID>LogFugitiveSpec() | Gdiff <SID>LogFugitiveSpec('^')<CR>
-    nnoremap <buffer> <silent> t    :let line=line('.')<cr> :<C-U>exe <SID>LogDiffToggle()<CR> :exe line<cr>
-    command! -buffer -bang Glog :execute s:Log(<bang>0)
-    autocmd BufLeave <buffer>       hi! link CursorLine NONE
-    autocmd BufLeave <buffer>       hi! link Cursor NONE
-    call s:LogDiffToggle()
-    let t:fugitive_log_bufnr = bufnr('')
-    silent doautocmd User 
-    return ''
-  catch /^fugitive:/
-    return 'echoerr v:errmsg'
-  endtry
+
+    let path = s:buffer().path()
+    try
+        let git_dir = s:buffer().repo().dir()
+        let template_cmd = ['--no-pager', 'log', '--follow']
+        let bufnr = bufnr('')
+        let base_file_name = tempname()
+        call s:LogLoadCommitData(a:bang, base_file_name, template_cmd, path)
+        let b:base_file_name = base_file_name
+        let b:git_dir = git_dir
+        let b:fugitive_blob_bufnr = bufnr
+        if g:fugitive_log_resize
+            exe 'vertical resize '.g:fugitive_log_width
+        endif
+        " invoke Close instead of bdelete so we can do the necessary cleanup
+        nnoremap <buffer> <silent> q    :<C-U>call <SID>LogClose()<CR>
+        nnoremap <buffer> <silent> d    :<C-U>call <SID>LogDiffCommit()<CR>
+        nnoremap <buffer> <silent> t    :let line=line('.')<cr> :<C-U>exe <SID>LogDiffToggle()<CR> :exe line<cr>
+        command! -buffer -bang Glog :execute s:Log(<bang>0)
+        autocmd BufLeave <buffer>       hi! link CursorLine NONE
+        autocmd BufLeave <buffer>       hi! link Cursor NONE
+        call s:LogDiffToggle()
+        let t:fugitive_log_bufnr = bufnr('')
+        silent doautocmd User fugitive_log
+        " setlocal nomodified nomodifiable bufhidden=wipe nonumber nowrap foldcolumn=0 nofoldenable filetype=fugitive_log ts=1 cursorline nobuflisted so=0 nolist
+        return ''
+    catch /^fugitive:/
+        return 'echoerr v:errmsg'
+    endtry
 endfunction
 
 function! s:LogLoadCommitData(bang, base_file_name, template_cmd, ...) abort
-  if a:0 >= 1
-    let path = a:1
-  else
-    let path = ''
-  endif
-
-  let git_cmd = s:buffer().repo().git_command()
-  " insert literal tabs in the format string because git does not seem to provide an escape code for it
-  if (g:fugitive_log_showhash)
-    let cmd = a:template_cmd + ['--pretty=format:%h	%an	%d	%s', '--', path]
-  else
-    let cmd = a:template_cmd + ['--pretty=format:%an	%d	%s', '--', path]
-  endif
-  let basecmd = escape(call(s:buffer().repo().git_command,cmd,s:buffer().repo()), '%')
-  let fugitive_log_cmd = a:template_cmd + ['--pretty=format:%h	%ad', '--', path]
-  let fugitive_log_basecmd = call(s:buffer().repo().git_command,fugitive_log_cmd,s:buffer().repo())
-
-  let log_file = a:base_file_name.'.fugitive_log'
-  " put the commit IDs in a separate file -- the user doesn't have to know
-  " exactly what they are
-  if &shell =~# 'csh'
-    silent! execute '%write !('.basecmd.' > '.log_file.') >& '.a:base_file_name
-  else
-    silent! execute '%write !'.basecmd.' > '.log_file.' 2> '.a:base_file_name
-  endif
-  if v:shell_error
-    let v:errmsg = 'Glog: '.join(readfile(a:base_file_name),"\n")
-    throw v:errmsg
-  endif
-
-  let fugitive_log_str = system(fugitive_log_basecmd)
-  let logdata = split(fugitive_log_str, '\n')
-  let logdata_list = []
-  for line in logdata
-    let tokens = matchlist(line, '\([^\t]\+\)\t\([^\t]\+\)')
-    call add(logdata_list, {'commit': tokens[1], 'date': tokens[2]})
-  endfor
-
-  if empty(logdata_list)
-    let v:errmsg = 'Glog: no log entries for the current file were found'
-    throw v:errmsg
-  endif
-
-  if s:LogIsActiveInTab()
-    silent! edit
-  else
-    if !a:bang
-      exe 'keepjumps leftabove vnew'
-      let t:fugitive_log_switch_back = 0
+    if a:0 >= 1
+        let path = a:1
     else
-      exe 'keepjumps enew'
-      let t:fugitive_log_switch_back = 1
+        let path = ''
     endif
-  endif
 
-  " There are some hardly predictable results related to 'modeline' option.
-  " Instead of just disabling the option also :read file and remove first
-  " (empty) line from original buffer instead of :editing the file.
-  setlocal nomodeline
-  exe 'silent! read' log_file
-  0delete
+    let git_cmd = s:buffer().repo().git_command()
+    " insert literal tabs in the format string because git does not seem to provide an escape code for it
+    if (g:fugitive_log_showhash)
+        let cmd = a:template_cmd + ['--pretty=format:%h	%an	%d	%s', '--', path]
+    else
+        let cmd = a:template_cmd + ['--pretty=format:%an	%d	%s', '--', path]
+    endif
+    let basecmd = escape(call(s:buffer().repo().git_command,cmd,s:buffer().repo()), '%')
+    let fugitive_log_cmd = a:template_cmd + ['--pretty=format:%h	%ad', '--', path]
+    let fugitive_log_basecmd = call(s:buffer().repo().git_command,fugitive_log_cmd,s:buffer().repo())
 
-  let b:git_cmd = git_cmd
-  let b:logdata_list = logdata_list
+    let log_file = a:base_file_name.'.fugitive_log'
+    " put the commit IDs in a separate file -- the user doesn't have to know
+    " exactly what they are
+    if &shell =~# 'csh'
+        silent! execute '%write !('.basecmd.' > '.log_file.') >& '.a:base_file_name
+    else
+        silent! execute '%write !'.basecmd.' > '.log_file.' 2> '.a:base_file_name
+    endif
+    if v:shell_error
+        let v:errmsg = 'Glog: '.join(readfile(a:base_file_name),"\n")
+        throw v:errmsg
+    endif
 
-  " Some components of the log may have no value. Or may insert whitespace of their own. Remove the repeated
-  " whitespace that result from this. Side effect: removes intended whitespace in the commit data.
-  setlocal modifiable
-  silent! keepjumps %s/\(\s\)\s\+/\1/g
-  keepjumps normal! gg
-  setlocal nomodified nomodifiable bufhidden=wipe nonumber nowrap foldcolumn=0 nofoldenable filetype=fugitive_log ts=1 cursorline nobuflisted so=0 nolist
+    let fugitive_log_str = system(fugitive_log_basecmd)
+    let logdata = split(fugitive_log_str, '\n')
+    let logdata_list = []
+    for line in logdata
+        let tokens = matchlist(line, '\([^\t]\+\)\t\([^\t]\+\)')
+        call add(logdata_list, {'commit': tokens[1], 'date': tokens[2]})
+    endfor
+
+    if empty(logdata_list)
+        let v:errmsg = 'Glog: no log entries for the current file were found'
+        throw v:errmsg
+    endif
+
+    if s:LogIsActiveInTab()
+        silent! edit
+    else
+        if !a:bang
+            exe 'keepjumps leftabove vnew'
+            let t:fugitive_log_switch_back = 0
+        else
+            exe 'keepjumps enew'
+            let t:fugitive_log_switch_back = 1
+        endif
+    endif
+
+    " There are some hardly predictable results related to 'modeline' option.
+    " Instead of just disabling the option also :read file and remove first
+    " (empty) line from original buffer instead of :editing the file.
+    setlocal nomodeline
+    exe 'silent! read' log_file
+    0delete
+
+    let b:git_cmd = git_cmd
+    let b:logdata_list = logdata_list
+
+    " Some components of the log may have no value. Or may insert whitespace of their own. Remove the repeated
+    " whitespace that result from this. Side effect: removes intended whitespace in the commit data.
+    setlocal modifiable
+    silent! keepjumps %s/\(\s\)\s\+/\1/g
+    keepjumps normal! gg
+    setlocal nomodified nomodifiable bufhidden=wipe nowrap foldcolumn=0 nofoldenable filetype=fugitive_log ts=1 cursorline nobuflisted so=0 nolist
 endfunction
 
 " Returns the `commit:path` associated with the current line in the log buffer
 function! s:LogCommitPath(...) abort
-  if exists('a:1')
-    let modifier = a:1
-  else
-    let modifier = ''
-  endif
+    if exists('a:1')
+        let modifier = a:1
+    else
+        let modifier = ''
+    endif
     let spec = s:repo().translate(b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path())
-    echo spec
-  return b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path()
+    return b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path()
 endfunction
 
 function! s:LogFugitiveSpec(...) abort
-  if exists('a:1')
-    let modifier = a:1
-  else
-    let modifier = ''
-  endif
+    if exists('a:1')
+        let modifier = a:1
+    else
+        let modifier = ''
+    endif
+    echo b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path()
+    echo s:repo().translate(b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path())
     return s:repo().translate(b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path())
 endfunction
 
 " Closes the file log and returns the selected `commit:path`
 function! s:LogClose() abort
 
-  if !s:LogIsActiveInTab()
-    return
-  endif
+    if !s:LogIsActiveInTab()
+        return
+    endif
 
-  let filelog_winnr = bufwinnr(t:fugitive_log_bufnr)
-  exe 'keepjumps '.filelog_winnr.'wincmd w'
+    let filelog_winnr = bufwinnr(t:fugitive_log_bufnr)
+    exe 'keepjumps '.filelog_winnr.'wincmd w'
 
-  let rev = s:LogCommitPath()
-  let fugitive_blob_bufnr = b:fugitive_blob_bufnr
-  if exists('b:fugitive_simplediff_bufnr') && bufwinnr(b:fugitive_simplediff_bufnr) >= 0
-    silent exe 'keepjumps bd!' . b:fugitive_simplediff_bufnr
-  endif
-  if t:fugitive_log_switch_back
-    exe b:fugitive_blob_bufnr.'buffer'
-  endif
-  if bufexists(t:fugitive_log_bufnr)
-    silent exe 'keepjumps bd!' . t:fugitive_log_bufnr
-  endif
-  let logged_winnr = bufwinnr(fugitive_blob_bufnr)
-  if logged_winnr >= 0
-    exe 'keepjumps '.logged_winnr.'wincmd w'
-  endif
-  let t:fugitive_log_bufnr = -1
-  return rev
+    let rev = s:LogCommitPath()
+    let fugitive_blob_bufnr = b:fugitive_blob_bufnr
+    if exists('b:fugitive_simplediff_bufnr') && bufwinnr(b:fugitive_simplediff_bufnr) >= 0
+        silent exe 'keepjumps bd!' . b:fugitive_simplediff_bufnr
+    endif
+    if t:fugitive_log_switch_back
+        exe b:fugitive_blob_bufnr.'buffer'
+    endif
+    if bufexists(t:fugitive_log_bufnr)
+        silent exe 'keepjumps bd!' . t:fugitive_log_bufnr
+    endif
+    let logged_winnr = bufwinnr(fugitive_blob_bufnr)
+    if logged_winnr >= 0
+        exe 'keepjumps '.logged_winnr.'wincmd w'
+    endif
+    let t:fugitive_log_bufnr = -1
+    return rev
 endfunction
 
 " Checks whether there is an fugitive log buffer opened in the current tab page
 function! s:LogIsActiveInTab() abort
-  return exists('t:fugitive_log_bufnr') && t:fugitive_log_bufnr >= 0 && bufexists(t:fugitive_log_bufnr)
+    return exists('t:fugitive_log_bufnr') && t:fugitive_log_bufnr >= 0 && bufexists(t:fugitive_log_bufnr)
 endfunction
 
 function! s:LogSyntax() abort
-  let b:current_syntax = 'fugitive_log'
-  if (g:fugitive_log_showhash)
-    syn match FugitiveLogId "^\(\w\)\+"
-    syn match FugitiveLogName "\t[^\t]\+\t"
-    hi def link FugitiveLogId Comment
-  else
-    syn match FugitiveLogName "^[^\t]\+\t"
-  endif
-  syn match FugitiveLogTag "(.*)\t"
-  hi def link FugitiveLogName String
-  hi def link FugitiveLogTag Identifier
-  hi! link CursorLine           Visual
-  " make the cursor less obvious. has no effect on xterm
-  hi! link Cursor               Visual
+    let b:current_syntax = 'fugitive_log'
+    if (g:fugitive_log_showhash)
+        syn match FugitiveLogId "^\(\w\)\+"
+        syn match FugitiveLogName "\t[^\t]\+\t"
+        hi def link FugitiveLogId Comment
+    else
+        syn match FugitiveLogName "^[^\t]\+\t"
+    endif
+    syn match FugitiveLogTag "(.*)\t"
+    hi def link FugitiveLogName String
+    hi def link FugitiveLogTag Identifier
+    hi! link CursorLine           Visual
+    " make the cursor less obvious. has no effect on xterm
+    hi! link Cursor               Visual
 endfunction
 
 function! s:LogDiffToggle() abort
-  if !exists('b:fugitive_simplediff_bufnr') || b:fugitive_simplediff_bufnr == -1
-    augroup fugitive_log
-      autocmd CursorMoved <buffer> call s:SimpleFileDiff(b:git_cmd,s:LogCommitPath('~1'), s:LogCommitPath())
-      " vim seems to get confused if we jump around buffers during a CursorMoved event. Moving the cursor
-      " around periodically helps vim figure out where it should really be.
-      autocmd CursorHold <buffer>  normal! lh
-    augroup END
-  else
-    exe "keepjumps bd" b:fugitive_simplediff_bufnr
-    unlet b:fugitive_simplediff_bufnr
-    au! fugitive_log
-  endif
+    if !exists('b:fugitive_simplediff_bufnr') || b:fugitive_simplediff_bufnr == -1
+        augroup fugitive_log
+            nnoremap <buffer><silent><CR> :<C-U>call <SID>SimpleFileDiff(b:git_cmd,<SID>LogCommitPath('~1'), <SID>LogCommitPath())<CR>
+        augroup END
+    else
+        exe "keepjumps bd" b:fugitive_simplediff_bufnr
+        unlet b:fugitive_simplediff_bufnr
+        au! fugitive_log
+    endif
 endfunction
 
 " Does a git diff on a single file and discards the top few lines of extraneous
 " information
 function! s:SimpleFileDiff(git_cmd,a,b) abort
-  call s:SimpleDiff(a:git_cmd,a:a,a:b)
-  let win = bufwinnr(b:fugitive_simplediff_bufnr)
-  exe 'keepjumps '.win.'wincmd w'
-  setlocal modifiable
+    call s:SimpleDiff(a:git_cmd,a:a,a:b)
+    let win = bufwinnr(b:fugitive_simplediff_bufnr)
+    exe 'keepjumps '.win.'wincmd w'
+    setlocal modifiable
     keepjumps silent normal! gg5dd
-  setlocal nomodifiable
-  keepjumps wincmd p
+    setlocal nomodifiable
+    keepjumps wincmd p
 endfunction
 
 " Does a git diff of commits a and b. Will create one simplediff-buffer that is
 " unique wrt the buffer that it is invoked from.
 function! s:SimpleDiff(git_cmd,a,b) abort
 
-  if !exists('b:fugitive_simplediff_bufnr') || b:fugitive_simplediff_bufnr == -1
-    exec g:fugitive_log_diff_split
-    enew!
-    command! -buffer -bang Glog :execute s:Log(<bang>0)
-    nnoremap <buffer> <silent> q    :<C-U>call <SID>LogClose()<CR>
-    let bufnr = bufnr('')
+    if !exists('b:fugitive_simplediff_bufnr') || b:fugitive_simplediff_bufnr == -1
+        exec g:fugitive_log_diff_split
+        enew!
+        command! -buffer -bang Glog :execute s:Log(<bang>0)
+        nnoremap <buffer> <silent> q    :<C-U>call <SID>LogClose()<CR>
+        let bufnr = bufnr('')
 
-    keepjumps wincmd p
-    let b:fugitive_simplediff_bufnr = bufnr
-  endif
+        keepjumps wincmd p
+        let b:fugitive_simplediff_bufnr = bufnr
+    endif
 
-  let win = bufwinnr(b:fugitive_simplediff_bufnr)
-  exe 'keepjumps '.win.'wincmd w'
+    let win = bufwinnr(b:fugitive_simplediff_bufnr)
+    exe 'keepjumps '.win.'wincmd w'
 
-  " check if we have generated this diff already, to reduce unnecessary shell requests
-  if exists('b:files') && b:files['a'] == a:a && b:files['b'] == a:b
-    keepjumps wincmd p
-    return
-  endif
+    " check if we have generated this diff already, to reduce unnecessary shell requests
+    if exists('b:files') && b:files['a'] == a:a && b:files['b'] == a:b
+        keepjumps wincmd p
+        return
+    endif
 
-  setlocal modifiable
+    setlocal modifiable
     silent! %delete _
     let diff = system(a:git_cmd.' diff --no-ext-diff '.a:a.' '.a:b)
     silent put = diff
-  setlocal ft=diff buftype=nofile nomodifiable
+    setlocal ft=diff buftype=nofile nomodifiable
 
-  let b:files = { 'a': a:a, 'b': a:b }
-  normal! zR
-  keepjumps wincmd p
+    let b:files = { 'a': a:a, 'b': a:b }
+    normal! zR
+    keepjumps wincmd p
 endfunction
 
 function! s:LogDiffCommit() abort
-    exe ':tabnew | edit <SID>LogFugitiveSpec() | Gdiff <SID>LogFugitiveSpec("^")'
+    let commitSpec = s:LogFugitiveSpec()
+    let lastCommitPath = s:LogCommitPath('~1')
+    exe ':tabnew | edit ' . commitSpec . ' | Gdiff ' . lastCommitPath
 endfunction
 
 " Section: Gedit, Gpedit, Gsplit, Gvsplit, Gtabedit, Gread
@@ -2939,6 +2940,10 @@ augroup END
 function! s:JumpInit() abort
     nnoremap <buffer> <silent> <CR>    :<C-U>exe <SID>GF("edit")<CR>
     if !&modifiable
+        autocmd User fugitive 
+                    \ if fugitive#buffer().type() =~# '^\%(tree\|blob\)$' |
+                    \   nnoremap <buffer> .. :edit %:h<CR> |
+                    \ endif
         nnoremap <buffer> <silent> o     :<C-U>exe <SID>GF("split")<CR>
         nnoremap <buffer> <silent> S     :<C-U>exe <SID>GF("vsplit")<CR>
         nnoremap <buffer> <silent> O     :<C-U>exe <SID>GF("tabedit")<CR>
