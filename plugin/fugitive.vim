@@ -1335,14 +1335,14 @@ function! s:Log(bang) abort
         " invoke Close instead of bdelete so we can do the necessary cleanup
         nnoremap <buffer> <silent> q    :<C-U>call <SID>LogClose()<CR>
         nnoremap <buffer> <silent> d    :<C-U>call <SID>LogDiffCommit()<CR>
+        nnoremap <buffer> <silent> e    :<C-U>call <SID>LogEditCommit()<CR>
         nnoremap <buffer> <silent> t    :let line=line('.')<cr> :<C-U>exe <SID>LogDiffToggle()<CR> :exe line<cr>
+        nnoremap <buffer><silent><CR>   :<C-U>call <SID>SimpleFileDiff(b:git_cmd,<SID>LogCommitPath('~1'), <SID>LogCommitPath())<CR>
         command! -buffer -bang Glog :execute s:Log(<bang>0)
         autocmd BufLeave <buffer>       hi! link CursorLine NONE
         autocmd BufLeave <buffer>       hi! link Cursor NONE
-        call s:LogDiffToggle()
         let t:fugitive_log_bufnr = bufnr('')
         silent doautocmd User fugitive_log
-        " setlocal nomodified nomodifiable bufhidden=wipe nonumber nowrap foldcolumn=0 nofoldenable filetype=fugitive_log ts=1 cursorline nobuflisted so=0 nolist
         return ''
     catch /^fugitive:/
         return 'echoerr v:errmsg'
@@ -1364,7 +1364,7 @@ function! s:LogLoadCommitData(bang, base_file_name, template_cmd, ...) abort
         let cmd = a:template_cmd + ['--pretty=format:%an	%d	%s', '--', path]
     endif
     let basecmd = escape(call(s:buffer().repo().git_command,cmd,s:buffer().repo()), '%')
-    let fugitive_log_cmd = a:template_cmd + ['--pretty=format:%h	%ad', '--', path]
+    let fugitive_log_cmd = a:template_cmd + ['--pretty=format:%h	%an', '--', path]
     let fugitive_log_basecmd = call(s:buffer().repo().git_command,fugitive_log_cmd,s:buffer().repo())
 
     let log_file = a:base_file_name.'.fugitive_log'
@@ -1423,6 +1423,16 @@ function! s:LogLoadCommitData(bang, base_file_name, template_cmd, ...) abort
     setlocal nomodified nomodifiable bufhidden=wipe nowrap foldcolumn=0 nofoldenable filetype=fugitive_log ts=1 cursorline nobuflisted so=0 nolist
 endfunction
 
+function! s:LogEditCommit() abort
+    if !exists('t:fugitive_editcommit_bufnr') || t:fugitive_editcommit_bufnr == -1 || !bufloaded(t:fugitive_editcommit_bufnr)
+        let t:fugitive_editcommit_bufnr = b:fugitive_blob_bufnr
+    endif
+    echo t:fugitive_editcommit_bufnr
+    exe 'keepjumps ' . bufwinnr(t:fugitive_editcommit_bufnr) . 'wincmd w | edit ' . s:repo().translate(b:logdata_list[line(".")-1]['commit'])
+    command! -buffer -bang Glog :execute s:Log(<bang>0)
+    let t:fugitive_editcommit_bufnr = bufnr('')
+endfunction
+
 " Returns the `commit:path` associated with the current line in the log buffer
 function! s:LogCommitPath(...) abort
     if exists('a:1')
@@ -1430,7 +1440,6 @@ function! s:LogCommitPath(...) abort
     else
         let modifier = ''
     endif
-    let spec = s:repo().translate(b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path())
     return b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path()
 endfunction
 
@@ -1440,8 +1449,6 @@ function! s:LogFugitiveSpec(...) abort
     else
         let modifier = ''
     endif
-    echo b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path()
-    echo s:repo().translate(b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path())
     return s:repo().translate(b:logdata_list[line(".")-1]['commit'].modifier.':'.s:buffer(b:fugitive_blob_bufnr).path())
 endfunction
 
@@ -1498,13 +1505,10 @@ endfunction
 
 function! s:LogDiffToggle() abort
     if !exists('b:fugitive_simplediff_bufnr') || b:fugitive_simplediff_bufnr == -1
-        augroup fugitive_log
-            nnoremap <buffer><silent><CR> :<C-U>call <SID>SimpleFileDiff(b:git_cmd,<SID>LogCommitPath('~1'), <SID>LogCommitPath())<CR>
-        augroup END
+        call s:SimpleFileDiff(b:git_cmd,s:LogCommitPath('~1'), s:LogCommitPath())
     else
         exe "keepjumps bd" b:fugitive_simplediff_bufnr
         unlet b:fugitive_simplediff_bufnr
-        au! fugitive_log
     endif
 endfunction
 
@@ -1515,7 +1519,10 @@ function! s:SimpleFileDiff(git_cmd,a,b) abort
     let win = bufwinnr(b:fugitive_simplediff_bufnr)
     exe 'keepjumps '.win.'wincmd w'
     setlocal modifiable
-    keepjumps silent normal! gg5dd
+    keepjumps silent normal! gg
+    if(getline(2) =~# '^diff --git \%(a/.*\|/dev/null\) \%(b/.*\|/dev/null\)')
+        keepjumps silent normal! 5dd
+    endif
     setlocal nomodifiable
     keepjumps wincmd p
 endfunction
@@ -2882,7 +2889,7 @@ function! s:BufReadObject() abort
                 setlocal bufhidden=delete
             endif
             if b:fugitive_type !=# 'blob'
-                setlocal filetype=git foldmethod=syntax
+                setlocal filetype=git nofoldenable
                 nnoremap <buffer> <silent> a :<C-U>let b:fugitive_display_format += v:count1<Bar>exe <SID>BufReadObject()<CR>
                 nnoremap <buffer> <silent> i :<C-U>let b:fugitive_display_format -= v:count1<Bar>exe <SID>BufReadObject()<CR>
             else
@@ -2940,10 +2947,6 @@ augroup END
 function! s:JumpInit() abort
     nnoremap <buffer> <silent> <CR>    :<C-U>exe <SID>GF("edit")<CR>
     if !&modifiable
-        autocmd User fugitive 
-                    \ if fugitive#buffer().type() =~# '^\%(tree\|blob\)$' |
-                    \   nnoremap <buffer> .. :edit %:h<CR> |
-                    \ endif
         nnoremap <buffer> <silent> o     :<C-U>exe <SID>GF("split")<CR>
         nnoremap <buffer> <silent> S     :<C-U>exe <SID>GF("vsplit")<CR>
         nnoremap <buffer> <silent> O     :<C-U>exe <SID>GF("tabedit")<CR>
