@@ -1323,8 +1323,12 @@ function! s:Log(bang) abort
         return
     endif
 
-    let path = s:buffer().path()
     try
+        if !a:bang
+            let path = s:buffer().path()
+        else
+            let path = ''
+        endif
         let git_dir = s:buffer().repo().dir()
         let bufnr = bufnr('')
         call s:LogLoadCommitData(g:fugitive_log_count_step, tempname(), path)
@@ -1335,11 +1339,15 @@ function! s:Log(bang) abort
         endif
         " invoke Close instead of bdelete so we can do the necessary cleanup
         nnoremap <buffer> <silent> q    :<C-U>call <SID>LogClose()<CR>
-        nnoremap <buffer> <silent> dc   :<C-U>call <SID>LogDiffCommit()<CR>
         nnoremap <buffer> <silent> e    :<C-U>call <SID>LogEditCommit()<CR>
-        nnoremap <buffer> <silent> t    :let line=line('.')<cr> :<C-U>exe <SID>LogDiffToggle()<CR> :exe line<cr>
-        nnoremap <buffer><silent><CR>   :<C-U>call <SID>LogHandleEnter()<CR>
-        command! -buffer -bang Glog :execute s:Log(<bang>0)
+        if !a:bang
+            nnoremap <buffer> <silent> dc   :<C-U>call <SID>LogDiffCommit()<CR>
+            nnoremap <buffer> <silent> t    :let line=line('.')<cr> :<C-U>exe <SID>LogDiffToggle()<CR> :exe line<cr>
+            nnoremap <buffer><silent><CR>   :<C-U>call <SID>LogHandleEnter(1)<CR>
+        else
+            nnoremap <buffer><silent><CR>   :<C-U>call <SID>LogHandleEnter(0)<CR>
+        endif
+        command! -buffer -bang Glog     :execute s:Log(<bang>0)
         autocmd BufLeave <buffer>       hi! link CursorLine NONE
         autocmd BufLeave <buffer>       hi! link Cursor NONE
         let t:fugitive_log_bufnr = bufnr('')
@@ -1350,23 +1358,17 @@ function! s:Log(bang) abort
     endtry
 endfunction
 
-function! s:LogLoadCommitData(log_count, base_file_name, ...) abort
-    if a:0 >= 1
-        let path = a:1
-    else
-        let path = ''
-    endif
-
+function! s:LogLoadCommitData(log_count, base_file_name, path) abort
     let git_cmd = s:buffer().repo().git_command()
     let template_cmd = ['--no-pager', 'log']
     " insert literal tabs in the format string because git does not seem to provide an escape code for it
     if (g:fugitive_log_showhash)
-        let cmd = template_cmd + ['--no-color', '--graph', "--pretty=format:%h	%an	%d	%s", '-'.a:log_count, '--', path]
+        let cmd = template_cmd + ['--no-color', '--graph', "--pretty=format:%h	%an	%d	%s", '-'.a:log_count, '--', a:path]
     else
-        let cmd = template_cmd + ['--no-color', '--graph', "--pretty=format:%an	%d	%s", '-'.a:log_count, '--', path]
+        let cmd = template_cmd + ['--no-color', '--graph', "--pretty=format:%an	%d	%s", '-'.a:log_count, '--', a:path]
     endif
     let basecmd = escape(call(s:buffer().repo().git_command,cmd,s:buffer().repo()), '%')
-    let fugitive_log_cmd = template_cmd + ['--pretty=format:%h	%an', '--', path]
+    let fugitive_log_cmd = template_cmd + ['--pretty=format:%h	%an', '--', a:path]
     let fugitive_log_basecmd = call(s:buffer().repo().git_command,fugitive_log_cmd,s:buffer().repo())
 
     let log_file = a:base_file_name.'.fugitive_log'
@@ -1411,6 +1413,7 @@ function! s:LogLoadCommitData(log_count, base_file_name, ...) abort
     let b:git_cmd = git_cmd
     let b:logdata_list = logdata_list
     let b:base_file_name = a:base_file_name
+    let b:fugitive_log_path = a:path
     if !exists('b:fugitive_log_count')
         let b:fugitive_log_count = 0
     endif
@@ -1438,11 +1441,11 @@ function! s:LogEditCommit() abort
     let t:fugitive_editcommit_bufnr = bufnr('')
 endfunction
 
-function! s:LogHandleEnter()
+function! s:LogHandleEnter(file_mode)
     if getline('.') == "-- Load More --"
         setlocal modifiable
-        call s:LogLoadCommitData(b:fugitive_log_count+g:fugitive_log_count_step, tempname(), s:buffer(b:fugitive_blob_bufnr).path())
-    else
+        call s:LogLoadCommitData(b:fugitive_log_count+g:fugitive_log_count_step, tempname(), b:fugitive_log_path)
+    elseif a:file_mode 
         call s:SimpleFileDiff(b:git_cmd,s:LogCommitPath('~1'), s:LogCommitPath())
     endif
 endfunction
