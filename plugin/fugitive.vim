@@ -1294,7 +1294,7 @@ endfunction
 " Section: Glog
 
 if !exists('g:fugitive_log_width')
-    let g:fugitive_log_width = 70
+    let g:fugitive_log_width = 60
 endif
 
 if !exists('g:fugitive_log_resize')
@@ -1578,7 +1578,7 @@ endfunction
 function! s:LogDiffCommit() abort
     let commitSpec = s:LogFugitiveSpec()
     let lastCommitPath = s:LogCommitPath('~1')
-    exe ':tabnew | edit ' . commitSpec . ' | Gdiff ' . lastCommitPath
+    exe ':tabnew | edit ' . commitSpec . ' | Gvdiff ' . lastCommitPath
 endfunction
 
 " Section: Gedit, Gpedit, Gsplit, Gvsplit, Gtabedit, Gread
