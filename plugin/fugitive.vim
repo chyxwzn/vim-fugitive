@@ -1363,9 +1363,9 @@ function! s:LogLoadCommitData(log_count, base_file_name, path) abort
     let template_cmd = ['--no-pager', 'log']
     " insert literal tabs in the format string because git does not seem to provide an escape code for it
     if (g:fugitive_log_showhash)
-        let cmd = template_cmd + ['--no-color', '--graph', "--pretty=format:%h	%an	%d	%s", '-'.a:log_count, '--', a:path]
+        let cmd = template_cmd + ['--no-color', '--date=short', "--pretty=format:%h	%ad %an	%d	%s", '-'.a:log_count, '--', a:path]
     else
-        let cmd = template_cmd + ['--no-color', '--graph', "--pretty=format:%an	%d	%s", '-'.a:log_count, '--', a:path]
+        let cmd = template_cmd + ['--no-color', '--date=short', "--pretty=format:%ad %an	%d	%s", '-'.a:log_count, '--', a:path]
     endif
     let basecmd = escape(call(s:buffer().repo().git_command,cmd,s:buffer().repo()), '%')
     let fugitive_log_cmd = template_cmd + ['--pretty=format:%h	%an', '--', a:path]
