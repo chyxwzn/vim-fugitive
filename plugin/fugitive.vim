@@ -1313,10 +1313,10 @@ if !exists('g:fugitive_log_diff_split')
     let g:fugitive_log_diff_split = 'belowright split'
 endif
 
-call s:command("-bang Glog :execute s:Log(<bang>0)")
+call s:command("-bang -nargs=? Glog :execute s:Log(<bang>0,<q-args>)")
 autocmd Syntax fugitive_log call s:LogSyntax()
 
-function! s:Log(bang) abort
+function! s:Log(bang, arg) abort
     " if we are open, close.
     if s:LogIsActiveInTab()
         call s:LogClose()
@@ -1327,7 +1327,11 @@ function! s:Log(bang) abort
         if !a:bang
             let path = s:buffer().path()
         else
-            let path = ''
+            if a:arg == '.'
+                let path = substitute(s:buffer().path(), '/'.bufname('%'), '', '')
+            else
+                let path = ''
+            endif
         endif
         let git_dir = s:buffer().repo().dir()
         let bufnr = bufnr('')
