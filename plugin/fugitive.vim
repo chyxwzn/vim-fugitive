@@ -1328,7 +1328,7 @@ function! s:Log(bang, arg) abort
             let path = s:buffer().path()
         else
             if a:arg == '.'
-                let path = substitute(s:buffer().path(), '/'.bufname('%'), '', '')
+                let path = substitute(s:buffer().path(), '[^/]*$', '', '')
             else
                 let path = ''
             endif
