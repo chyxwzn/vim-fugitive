@@ -1876,7 +1876,7 @@ endfunction
 
 " Section: Gdiff
 
-call s:command("-bang -bar -nargs=* -complete=customlist,s:EditComplete Gdiff :execute s:Diff('',<f-args>)")
+call s:command("-bang -bar -nargs=* -complete=customlist,s:EditComplete Gdiff :execute s:Diff('keepalt vert ',<f-args>)")
 call s:command("-bar -nargs=* -complete=customlist,s:EditComplete Gvdiff :execute s:Diff('keepalt vert ',<f-args>)")
 call s:command("-bar -nargs=* -complete=customlist,s:EditComplete Gsdiff :execute s:Diff('keepalt ',<f-args>)")
 
@@ -1999,11 +1999,13 @@ function! s:Diff(vert,...) abort
     elseif (!a:0 || a:1 == ':') && s:buffer().commit() =~# '^[0-1]\=$' && s:repo().git_chomp_in_tree('ls-files', '--unmerged', '--', s:buffer().path()) !=# ''
         let vert = empty(a:vert) ? s:diff_modifier(3) : a:vert
         let nr = bufnr('')
-        execute 'leftabove '.vert.'split `=fugitive#buffer().repo().translate(s:buffer().expand('':2''))`'
+        let file = s:repo().translate(s:buffer().expand(':2'))
+        execute 'leftabove '.vert.'split ' .file
         execute 'nnoremap <buffer> <silent> dp :diffput '.nr.'<Bar>diffupdate<CR>'
         call s:diffthis()
         wincmd p
-        execute 'rightbelow '.vert.'split `=fugitive#buffer().repo().translate(s:buffer().expand('':3''))`'
+        let file = s:repo().translate(s:buffer().expand(':3'))
+        execute 'rightbelow '.vert.'split ' .file
         execute 'nnoremap <buffer> <silent> dp :diffput '.nr.'<Bar>diffupdate<CR>'
         call s:diffthis()
         wincmd p
