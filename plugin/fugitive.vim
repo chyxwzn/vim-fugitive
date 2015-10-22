@@ -2010,6 +2010,7 @@ function! s:Diff(vert,...) abort
         call s:diffthis()
         wincmd p
         call s:diffthis()
+        :exe "normal \<C-W>="
         return ''
     elseif a:0
         let arg = join(a:000, ' ')
